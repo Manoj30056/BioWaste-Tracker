@@ -14,77 +14,88 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
+        if (!credentials?.email || !credentials?.password) {
+          return null;
+        }
+
+        const email = credentials.email as string;
+        const password = credentials.password as string;
+
+        const dbUser = await db
+          .select()
+          .from(users)
+          .where(eq(users.email, email))
+          .limit(1);
+
+        if (dbUser.length === 0) {
+          return null;
+        }
+
+        const user = dbUser[0];
+        console.log("Found user:", user.email);
+
+        if (!user.password) {
+          console.log("User has no password");
+          return null;
+        }
+
         try {
-          if (!credentials?.email || !credentials?.password) {
-            return null;
-          }
-
-          const dbUser = await db.select().from(users).where(eq(users.email, credentials.email as string)).limit(1);
-          if (dbUser.length === 0 || !dbUser[0].password) {
-            return null;
-          }
-
-          const isValid = await bcrypt.compare(credentials.password as string, dbUser[0].password);
+          console.log("Comparing passwords...");
+          const isValid = await bcrypt.compare(password, user.password);
+          console.log("Is valid?", isValid);
+          
           if (!isValid) return null;
 
           return {
-            id: dbUser[0].id,
-            name: dbUser[0].name || "",
-            email: dbUser[0].email || "",
-            image: dbUser[0].image,
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            image: user.image,
           };
-        } catch (error) {
-          console.error("Auth error:", error);
+        } catch (err) {
+          console.error("Auth error during comparison:", err);
           return null;
         }
       },
     }),
   ],
-  session: { 
+  session: {
     strategy: "jwt",
-    maxAge: 30 * 24 * 60 * 60,
+    maxAge: 30 * 24 * 60 * 60, // 30 days
   },
-  pages: { 
+  pages: {
     signIn: "/login",
-    signOut: "/login",
   },
   callbacks: {
-    async jwt({ token, user, trigger, session }) {
+    async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
-      }
-      // Handle session updates
-      if (trigger === "update" && session) {
-        return { ...token, ...session };
       }
       return token;
     },
     async session({ session, token }) {
       if (session.user && token.id) {
         session.user.id = token.id as string;
-        try {
-          const dbUser = await db.select().from(users).where(eq(users.id, token.id as string)).limit(1);
-          if (dbUser[0]) {
-            session.user.role = dbUser[0].role;
-            session.user.facilityId = dbUser[0].facilityId;
-            session.user.isApproved = dbUser[0].isApproved;
-            session.user.name = dbUser[0].name;
-          } else {
-            // User not found, clear session
-            session.user.role = undefined;
-            session.user.facilityId = undefined;
-          }
-        } catch (error) {
-          console.error("Session callback error:", error);
-          // Don't throw - just use basic session
+        // Fetch additional user data
+        const dbUser = await db
+          .select()
+          .from(users)
+          .where(eq(users.id, token.id as string))
+          .limit(1);
+        if (dbUser[0]) {
+          session.user.role = dbUser[0].role;
+          session.user.facilityId = dbUser[0].facilityId;
+          session.user.isApproved = dbUser[0].isApproved;
+          session.user.name = dbUser[0].name;
         }
       }
       return session;
     },
   },
-  secret: process.env.AUTH_SECRET || "biowaste-tracker-secret-key-2024",
+  secret: process.env.AUTH_SECRET || "biowaste-tracker-secret-key-change-in-production",
 });
 
+// Extend the session types
 declare module "next-auth" {
   interface Session {
     user: {

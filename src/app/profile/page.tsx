@@ -125,7 +125,7 @@ export default function ProfilePage() {
               </motion.div>
             )}
             <div className="mt-6 pt-4 border-t border-white/5">
-              <GlowButton variant="danger" onClick={() => { try { signOut({ callbackUrl: "/login", redirect: true }); } catch(e) { window.location.href = "/login"; } }} className="w-full">
+              <GlowButton variant="danger" onClick={() => signOut({ callbackUrl: "/login" })} className="w-full">
                 Sign Out
               </GlowButton>
             </div>
